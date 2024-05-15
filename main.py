@@ -5,7 +5,7 @@ import cv2
 import time
 
 SIZE = 80
-density = "Ñ@#W$9876543210?!abc;:+=-,._ "
+density = " .,-~:;=!*#$@"
 
 
 def main(argv):
@@ -43,7 +43,7 @@ def main(argv):
         for i in range(height):
             for j in range(width):
                 index = int(grayscale[i, j] / 255 * (len(density) - 1))
-                output.append(density[-index-1])
+                output.append(density[index])
             output.append("\n")
 
         print("".join(output))
