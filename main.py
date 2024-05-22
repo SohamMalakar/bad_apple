@@ -3,30 +3,22 @@
 import sys
 import cv2
 import time
+import threading
 
-SIZE = 80
+from moviepy.editor import VideoFileClip
+
+res = 80
 density = " .,-~:;=!*#$@"
 
 
-def main(argv):
-    if len(argv) != 2:
-        print(f"usage: {argv[0]} <video>")
-        exit(1)
+def play_audio(video_path):
+    video = VideoFileClip(video_path)
+    audio = video.audio
+    audio.preview()
+    video.close()
 
-    cap = cv2.VideoCapture(argv[1])
-    if not cap.isOpened():
-        print(f"Error: Cannot open video {argv[1]}")
-        exit(1)
 
-    xh = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    xw = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-
-    width = SIZE
-    height = int(width / xw * xh / 2)
-
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    frame_duration = 1 / fps
-
+def play_video(cap, width, height, frame_duration):
     while True:
         start_time = time.time()
 
@@ -51,6 +43,42 @@ def main(argv):
         elapsed_time = time.time() - start_time
         sleep_time = max(0, frame_duration - elapsed_time)
         time.sleep(sleep_time)
+
+
+def main(argv):
+    if len(argv) != 2 and len(argv) != 3:
+        print(f"usage: {argv[0]} <video> [res]")
+        exit(1)
+
+    global res
+
+    if len(argv) == 3:
+        res = int(argv[2])
+
+    cap = cv2.VideoCapture(argv[1])
+
+    if not cap.isOpened():
+        print(f"Error: Cannot open video {argv[1]}")
+        exit(1)
+
+    xh = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    xw = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+
+    width = res
+    height = int(width / xw * xh / 2)
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_duration = 1 / fps
+
+    thread1 = threading.Thread(target=play_audio, args=(argv[1],))
+    thread1.start()
+
+    thread2 = threading.Thread(target=play_video, args=(
+        cap, width, height, frame_duration))
+    thread2.start()
+
+    thread1.join()
+    thread2.join()
 
     cap.release()
 
