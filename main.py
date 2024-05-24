@@ -11,8 +11,10 @@ from moviepy.editor import VideoFileClip
 res = 80
 density = " .,-~:;=!*#$@"
 
+THRESHOLD = 0.005
 
-def play_audio(video_path):
+
+def play_audio_(video_path):
     video = VideoFileClip(video_path)
     audio = video.audio
     audio.preview()
@@ -49,6 +51,9 @@ def build_cache(cap, width, height):
 
 
 def play_cached_video(cache, frame_duration):
+    thread = threading.Thread(target=play_audio_, args=(sys.argv[1],))
+    thread.start()
+
     for frame in cache:
         start_time = time.time()
         print("\033[H\033[J", end="")
@@ -57,8 +62,13 @@ def play_cached_video(cache, frame_duration):
         sleep_time = max(0, frame_duration - elapsed_time)
         time.sleep(sleep_time)
 
+    thread.join()
+
 
 def play_video(cap, width, height, frame_duration):
+
+    thread = None
+
     while True:
         start_time = time.time()
 
@@ -71,18 +81,19 @@ def play_video(cap, width, height, frame_duration):
 
         print("\033[H\033[J", end="")
 
-        output = []
-        for i in range(height):
-            for j in range(width):
-                index = int(grayscale[i, j] / 255 * (len(density) - 1))
-                output.append(density[index])
-            output.append("\n")
+        output = generate_frame(width, height, grayscale)
+
+        if thread is None:
+            thread = threading.Thread(target=play_audio_, args=(sys.argv[1],))
+            thread.start()
 
         print("".join(output))
 
         elapsed_time = time.time() - start_time
         sleep_time = max(0, frame_duration - elapsed_time)
         time.sleep(sleep_time)
+
+    thread.join()
 
 
 def get_elapsed_time(cap, width, height):
@@ -92,33 +103,27 @@ def get_elapsed_time(cap, width, height):
     resized = cv2.resize(frame, (width, height))
     grayscale = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
 
-    output = []
-    for i in range(height):
-        for j in range(width):
-            index = int(grayscale[i, j] / 255 * (len(density) - 1))
-            output.append(density[index])
-        output.append("\n")
-
+    output = generate_frame(width, height, grayscale)
     print("".join(output))
 
     elapsed_time = time.time() - start_time
     return elapsed_time
 
 
-def main(argv):
-    if len(argv) != 2 and len(argv) != 3:
-        print(f"usage: {argv[0]} <video> [res]")
+def main():
+    if len(sys.argv) != 2 and len(sys.argv) != 3:
+        print(f"usage: {sys.argv[0]} <video> [res]")
         exit(1)
 
     global res
 
-    if len(argv) == 3:
-        res = int(argv[2])
+    if len(sys.argv) == 3:
+        res = int(sys.argv[2])
 
-    cap = cv2.VideoCapture(argv[1])
+    cap = cv2.VideoCapture(sys.argv[1])
 
     if not cap.isOpened():
-        print(f"Error: Cannot open video {argv[1]}")
+        print(f"Error: Cannot open video {sys.argv[1]}")
         exit(1)
 
     xh = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
@@ -130,33 +135,20 @@ def main(argv):
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_duration = 1 / fps
 
+    _ = get_elapsed_time(cap, width, height)  # warm up
     elapsed_time = get_elapsed_time(cap, width, height)
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
-    if elapsed_time > frame_duration:
+    if elapsed_time > frame_duration - THRESHOLD:
         print("\033[H\033[J", end="")
         cache = build_cache(cap, width, height)
-
-        thread1 = threading.Thread(target=play_audio, args=(argv[1],))
-        thread1.start()
-
-        thread2 = threading.Thread(
-            target=play_cached_video, args=(cache, frame_duration))
-        thread2.start()
+        play_cached_video(cache, frame_duration)
     else:
-        thread1 = threading.Thread(target=play_audio, args=(argv[1],))
-        thread1.start()
-
-        thread2 = threading.Thread(target=play_video, args=(
-            cap, width, height, frame_duration))
-        thread2.start()
-
-    thread1.join()
-    thread2.join()
+        play_video(cap, width, height, frame_duration)
 
     cap.release()
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main()
