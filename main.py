@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import sys
 import cv2
 import time
@@ -12,9 +13,36 @@ res = 80
 density = " .,-~:;=!*#$@"
 
 THRESHOLD = 0.005
+TIME_DUMP_FILE = "time_dump.tmp"
 
 
-def play_audio_(video_path):
+def print_loading_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='█'):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        iteration  - Required  : current iteration (Int)
+        total      - Required  : total iterations (Int)
+        prefix     - Optional  : prefix string (Str)
+        suffix     - Optional  : suffix string (Str)
+        decimals   - Optional  : positive number of decimals in percent complete (Int)
+        length     - Optional  : character length of bar (Int)
+        fill       - Optional  : bar fill character (Str)
+    """
+    percent = ("{0:." + str(decimals) + "f}").format(100 *
+                                                     (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    time_elapsed = time.time() - start_time
+    time_per_iteration = time_elapsed / (iteration + 1)
+    time_remaining = time_per_iteration * (total - iteration - 1)
+    eta = time.strftime("%H:%M:%S", time.gmtime(time_remaining))
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix} ETA: {eta}')
+    sys.stdout.flush()
+    if iteration == total:
+        print()
+
+
+def play_audio(video_path):
     video = VideoFileClip(video_path)
     audio = video.audio
     audio.preview()
@@ -33,10 +61,13 @@ def generate_frame(width, height, grayscale):
 
 
 def build_cache(cap, width, height):
-    cache = []
-    print("Caching...")
+    global start_time
+    start_time = time.time()
 
-    while True:
+    cache = []
+    no_of_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    for i in range(no_of_frames):
         ret, frame = cap.read()
         if not ret:
             break
@@ -46,12 +77,14 @@ def build_cache(cap, width, height):
 
         output = generate_frame(width, height, grayscale)
         cache.append("".join(output))
+        print_loading_bar(i + 1, no_of_frames, prefix='Progress',
+                          suffix='Complete', length=50)
 
     return cache
 
 
 def play_cached_video(cache, frame_duration):
-    thread = threading.Thread(target=play_audio_, args=(sys.argv[1],))
+    thread = threading.Thread(target=play_audio, args=(sys.argv[1],))
     thread.start()
 
     for frame in cache:
@@ -66,7 +99,6 @@ def play_cached_video(cache, frame_duration):
 
 
 def play_video(cap, width, height, frame_duration):
-
     thread = None
 
     while True:
@@ -84,7 +116,7 @@ def play_video(cap, width, height, frame_duration):
         output = generate_frame(width, height, grayscale)
 
         if thread is None:
-            thread = threading.Thread(target=play_audio_, args=(sys.argv[1],))
+            thread = threading.Thread(target=play_audio, args=(sys.argv[1],))
             thread.start()
 
         print("".join(output))
@@ -97,6 +129,8 @@ def play_video(cap, width, height, frame_duration):
 
 
 def get_elapsed_time(cap, width, height):
+    file = open(TIME_DUMP_FILE, "w")
+
     start_time = time.time()
     _, frame = cap.read()
 
@@ -104,9 +138,12 @@ def get_elapsed_time(cap, width, height):
     grayscale = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY)
 
     output = generate_frame(width, height, grayscale)
-    print("".join(output))
+    file.write("".join(output))
 
     elapsed_time = time.time() - start_time
+
+    file.close()
+
     return elapsed_time
 
 
@@ -138,14 +175,20 @@ def main():
     _ = get_elapsed_time(cap, width, height)  # warm up
     elapsed_time = get_elapsed_time(cap, width, height)
 
+    try:
+        os.remove(TIME_DUMP_FILE)
+    except:
+        print("Error: Cannot remove time dump file")
+
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     if elapsed_time > frame_duration - THRESHOLD:
-        print("\033[H\033[J", end="")
         cache = build_cache(cap, width, height)
         play_cached_video(cache, frame_duration)
     else:
         play_video(cap, width, height, frame_duration)
+
+    print("\033[H\033[J", end="")
 
     cap.release()
 
